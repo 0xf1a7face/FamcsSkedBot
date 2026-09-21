@@ -9,7 +9,7 @@ import {
 } from "./src/storage.js?v=97";
 import { initializeTelegramWebApp, triggerTelegramHaptic } from "./src/telegram.js?v=97";
 import { setStaleNotice, showToast } from "./src/feedback.js?v=97";
-import { setupScheduleModes, filterSubgroup, teacherSchedule } from "./src/schedule-modes.js?v=101";
+import { setupScheduleModes, filterSubgroup, teacherSchedule } from "./src/schedule-modes.js?v=102";
 import { requestJson } from "./src/request.js?v=97";
 import { setupCloudColors } from "./src/cloud-colors.js?v=99";
 
