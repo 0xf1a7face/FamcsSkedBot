@@ -2,9 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { registerScheduleRoutes } from "./routes/schedule";
 import { registerSystemRoutes } from "./routes/system";
-import { registerFishingRoutes } from "./routes/fishing";
 import { registerColorRoutes } from "./routes/colors";
-import { registerFishingSocket } from "./fishing/socket";
 import type { AppEnvironment } from "./types";
 
 const app = new Hono<AppEnvironment>();
@@ -28,8 +26,6 @@ app.use("*", async (c, next) => {
 });
 
 registerSystemRoutes(app);
-registerFishingSocket(app);
-registerFishingRoutes(app);
 registerColorRoutes(app);
 registerScheduleRoutes(app);
 

@@ -9,10 +9,9 @@ import {
 } from "./src/storage.js?v=97";
 import { initializeTelegramWebApp, triggerTelegramHaptic } from "./src/telegram.js?v=97";
 import { setStaleNotice, showToast } from "./src/feedback.js?v=97";
-import { setupScheduleModes, filterSubgroup, teacherSchedule } from "./src/schedule-modes.js?v=97";
+import { setupScheduleModes, filterSubgroup, teacherSchedule } from "./src/schedule-modes.js?v=101";
 import { requestJson } from "./src/request.js?v=97";
-import { setupFishingLauncher } from "./src/fishing-loader.js?v=97";
-import { setupCloudColors } from "./src/cloud-colors.js?v=97";
+import { setupCloudColors } from "./src/cloud-colors.js?v=99";
 
 let scheduleMode = null;
 let teacherRequest = 0;
@@ -135,7 +134,6 @@ const appState = {
 };
 
 function initApp() {
-  setupFishingLauncher();
   console.log("Инициализация приложения...");
   initializeTelegramWebApp();
   startCloudColors();

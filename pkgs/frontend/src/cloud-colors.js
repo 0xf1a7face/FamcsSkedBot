@@ -99,7 +99,7 @@ export function setupCloudColors(onChange, onError) {
   if (migrationPending) stageLegacyColors(local, legacy.colors, legacy.recent);
   else if (!storageGet(migrationKey)) storageSet(migrationKey, 'empty');
 
-  let running = false, timer, disposed = false, reportedError = false, lastRead = 0, failures = 0, fishingOpen = false;
+  let running = false, timer, disposed = false, reportedError = false, lastRead = 0, failures = 0;
   const dirty = () => Object.keys(local.pending).length > 0 || Boolean(local.recent);
   function persist() { try { localStorage.setItem(key, JSON.stringify(local)); } catch { /* server still available */ } }
   function paint() {
@@ -151,9 +151,7 @@ export function setupCloudColors(onChange, onError) {
       }
     } finally { running = false; if (dirty()) queue(Math.min(300000, 10000 * 2 ** Math.min(failures, 5))); }
   }
-  const refresh = () => { if (!document.hidden && (dirty() || (!fishingOpen && Date.now() - lastRead >= 60000))) void sync(); };
-  const fishingVisibility = event => { fishingOpen = event.detail === true; if (!fishingOpen) refresh(); };
-  window.addEventListener('fishing-visibility', fishingVisibility);
+  const refresh = () => { if (!document.hidden && (dirty() || Date.now() - lastRead >= 60000)) void sync(); };
   window.addEventListener('focus', refresh);
   window.addEventListener('online', refresh);
   document.addEventListener('visibilitychange', refresh);
@@ -165,6 +163,6 @@ export function setupCloudColors(onChange, onError) {
   return {
     getColors: () => mergeColors(local.document.colors, local.pending),
     edit(key, value) { local.pending[key] = { value: value?.toLowerCase() || null, seq: ++local.seq }; persist(); queue(); },
-    stop() { disposed = true; clearTimeout(timer); clearInterval(interval); window.removeEventListener('focus', refresh); window.removeEventListener('online', refresh); window.removeEventListener('fishing-visibility', fishingVisibility); document.removeEventListener('visibilitychange', refresh); },
+    stop() { disposed = true; clearTimeout(timer); clearInterval(interval); window.removeEventListener('focus', refresh); window.removeEventListener('online', refresh); document.removeEventListener('visibilitychange', refresh); },
   };
 }

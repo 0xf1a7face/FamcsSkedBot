@@ -59,9 +59,9 @@
     <!-- styles.css — статический, render-blocking тег: браузер обязан
          дождаться его загрузки и разбора, прежде чем показать страницу,
          поэтому голый HTML физически не может промелькнуть в обычном
-         режиме (FORCE_DISABLE_CACHE = false). Версия "?v=97" — меняйте
+         режиме (FORCE_DISABLE_CACHE = false). Версия "?v=101" — меняйте
          вручную при каждом деплое, как и раньше. -->
-    <link rel="stylesheet" id="mainStyle" href="/styles.css?v=97" />
+    <link rel="stylesheet" id="mainStyle" href="/styles.css?v=101" />
     <link rel="stylesheet" href="/src/comparison.css?v=97" />
 
     <!-- ПРЕДЗАГРУЗКА ШРИФТОВ, которые нужны для первого экрана (шапка,
@@ -245,12 +245,6 @@
                      просто текст. Текст в неё вписывается кодом в app.js —
                      см. константу INFO_PANEL_TEXT и функцию renderInfoPanel().
                      Пока текст пустой, плашка скрыта классом .hidden. -->
-          <!-- Temporarily hidden; remove the hidden attribute to restore the fishing invitation. -->
-          <section class="fishing-invite" aria-label="Рыбалка после пар" hidden>
-            <p>Всё. Пары закончились.</p>
-            <div class="fishing-invite-action"><strong>Порыбачим?</strong><button id="fishing-open" type="button" aria-label="Открыть рыбалку" aria-expanded="false" aria-controls="fishing-host"><svg width="36" height="20" viewBox="0 0 36 20" fill="none" aria-hidden="true"><path d="M3 10c5-7 16-8 24 0-8 8-19 7-24 0Z" fill="currentColor"/><path d="m26 10 8-7v14l-8-7Z" fill="currentColor"/><circle cx="9" cy="8" r="1.5" fill="#e9fbff"/></svg></button></div>
-          </section>
-          <div id="fishing-host" hidden></div>
           <div id="info-panel" class="info-panel hidden">
             <p id="info-panel-text" class="info-panel-text"></p>
           </div>
@@ -384,6 +378,6 @@
         });
       })();
     </script>
-    <script type="module" src="/app.js?v=97"></script>
+    <script type="module" src="/app.js?v=101"></script>
   </body>
 </html>

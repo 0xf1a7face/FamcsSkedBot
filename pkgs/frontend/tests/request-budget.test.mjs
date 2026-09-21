@@ -16,7 +16,7 @@ function browser() {
     setInterval(fn, ms) { intervals.push({ fn, ms }); return intervals.length; }, clearInterval() {}, console,
   };
 }
-test('colors have no periodic reads during fishing; edits still upload and retry backs off', async () => {
+test('colors skip periodic reads in a hidden tab; edits upload and retry backs off', async () => {
   const env = browser(), calls = []; let fail = false;
   const context = vm.createContext({ ...env, accountHint: () => '1', accountRequest: async (path, body) => {
     calls.push({ path, body }); if (fail) throw new Error('offline');
@@ -24,8 +24,9 @@ test('colors have no periodic reads during fishing; edits still upload and retry
   } });
   vm.runInContext(source('../src/cloud-colors.js') + '\nglobalThis.colors = setupCloudColors();', context);
   await tick(); assert.equal(calls.length, 1); assert.equal(env.intervals[0].ms, 600000);
-  const visibility = new Event('fishing-visibility'); visibility.detail = true; env.window.dispatchEvent(visibility);
+  env.document.hidden = true;
   env.advance(3600000); env.intervals[0].fn(); await tick(); assert.equal(calls.length, 1);
+  env.document.hidden = false;
   context.colors.edit('lesson', '#123456');
   [...env.timers.values()].find(timer => timer.ms === 3000).fn(); await tick();
   assert.equal(calls.length, 3); assert.equal(calls[2].body.document.colors.lesson, '#123456');
@@ -33,28 +34,4 @@ test('colors have no periodic reads during fishing; edits still upload and retry
   [...env.timers.values()].find(timer => timer.ms === 3000).fn(); await tick();
   assert.ok([...env.timers.values()].some(timer => timer.ms >= 20000));
   context.colors.stop();
-});
-test('game caches screens, deduplicates focus refreshes and skips periodic empty saves', async () => {
-  const env = browser(), calls = [];
-  const game = { wallet: { smallFish: 0 }, fish: {}, inventory: { rods: ['twig'], baits: {} }, equipped: { rod: 'twig', bait: null } };
-  const request = async path => { calls.push(path); return { userId: 1, revision: 1, game, catalog: {}, cards: [], leaders: [] }; };
-  const db = { transaction() {
-    const tx = { objectStore: () => ({ getAll: () => ({ result: [] }) }) };
-    queueMicrotask(() => tx.oncomplete()); return tx;
-  } };
-  const context = vm.createContext({ ...env, httpRequest: request, accountHint: () => '1', API_ROOT: 'http://localhost/api',
-    createGameTransport: () => ({ request, close() {}, closeWhenIdle() {} }),
-    indexedDB: { open() { const result = { result: db }; queueMicrotask(() => result.onsuccess()); return result; } },
-  });
-  vm.runInContext(source('../src/fishing/progress.js') + '\nglobalThis.progress = createProgress();', context);
-  await context.progress.init();
-  await Promise.all([context.progress.shop(), context.progress.shop()]);
-  await context.progress.collection(); await context.progress.collection();
-  await context.progress.leaderboard(); await context.progress.leaderboard();
-  assert.deepEqual(calls, ['fishing/profile', 'fishing/shop', 'fishing/collection', 'fishing/leaderboard']);
-  env.intervals[0].fn(); await tick(); assert.equal(calls.length, 4);
-  env.advance(60001); env.window.dispatchEvent(new Event('focus')); env.document.dispatchEvent(new Event('visibilitychange'));
-  await tick(); assert.equal(calls.filter(path => path === 'fishing/profile').length, 2);
-  context.progress.setActive(false); env.advance(60001); env.window.dispatchEvent(new Event('focus'));
-  await tick(); assert.equal(calls.filter(path => path === 'fishing/profile').length, 2);
 });

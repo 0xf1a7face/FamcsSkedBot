@@ -23,26 +23,6 @@
 
 [hidden] { display: none !important; }
 
-.fishing-invite { margin: 52px 0 28px; display: flex; flex-direction: column; align-items: center; text-align: center; }
-.fishing-invite p { margin: 0; }
-.fishing-invite-action { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 11px; }
-.fishing-invite p, .fishing-invite-action strong { color: var(--ink); font-family: var(--font-sans); font-size: 18px; font-weight: 600; line-height: 1; }
-.fishing-invite button { display: grid; place-items: center; width: 72px; height: 38px; padding: 0; border: 1px solid #b9e8f2; border-radius: 12px; background: #a9dfed; color: #000; box-shadow: none; cursor: pointer; transition: transform .18s ease; }
-.fishing-invite button:active { transform: translateX(2px) scale(.97); }
-.fishing-invite button:disabled { opacity: .5; cursor: wait; }
-.fishing-invite button:focus-visible { outline: 2px solid #8fd5e8; outline-offset: 4px; }
-.fishing-loading-screen {
-  display: grid;
-  place-items: center;
-  aspect-ratio: 3 / 4;
-  padding: 24px;
-  color: #fff7e8;
-  background: radial-gradient(circle at 78% 18%, #ffb9d4 0 8%, transparent 30%), linear-gradient(155deg, #6557c5, #42bad2 60%, #7ce5c9);
-  font: 500 13px var(--font-sans), sans-serif;
-  text-align: center;
-}
-.fishing-loading-screen small { display: block; margin-top: 8px; font-size: 10px; opacity: .8; }
-
 .mode-section { margin-bottom: 24px; }
 .mode-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--mode-gap); width: 100%; max-width: calc(291px + var(--mode-gap) + var(--mode-gap)); margin-inline: auto; padding: 0; }
 .mode-option { display: grid; grid-template-columns: minmax(0, 1fr); gap: 7px; min-width: 0; }
@@ -52,7 +32,7 @@
 .mode-card[aria-pressed="true"] { border-color: #76b4ff; background: #19283a; }
 .mode-card:focus-visible, .mode-panel :focus-visible, .subgroup-control select:focus-visible { outline: 3px solid #76b4ff; outline-offset: 3px; }
 .mode-icon { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 13px; background: #223b58; color: #83bdff; }
-.mode-icon svg { width: 25px; height: 25px; }
+.mode-icon svg { width: 32px; height: 32px; }
 .mode-icon-teacher { color: #ffca88; background: #463522; }
 .mode-icon-compare { color: #85dfc0; background: #203f37; }
 .mode-title { font-size: 16px; font-weight: 600; line-height: 1.3; }
@@ -503,11 +483,6 @@ body {
     calc(var(--screen-edge-x) + env(safe-area-inset-left, 0px));
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-}
-
-#fishing-host {
-  margin-right: calc(0px - var(--screen-edge-x) - env(safe-area-inset-right, 0px));
-  margin-left: calc(0px - var(--screen-edge-x) - env(safe-area-inset-left, 0px));
 }
 
 /* ============================================================
