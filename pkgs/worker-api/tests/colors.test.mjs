@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { createHmac } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { build } from '../node_modules/esbuild/lib/main.js';
 const bundle = await build({entryPoints:[new URL('../src/index.ts',import.meta.url).pathname.replace(/^\/(\w:)/,'$1')],bundle:true,write:false,format:'esm',platform:'browser'});
 const {default:app} = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
@@ -14,7 +15,8 @@ function auth(id) {
 }
 test('colors preserve revisions, validate values and isolate users without any game schema',async () => {
   const db = new DatabaseSync(':memory:');
-  db.exec(`CREATE TABLE miniapp_colors (telegram_id INTEGER PRIMARY KEY, revision INTEGER NOT NULL DEFAULT 0, colors_json TEXT NOT NULL DEFAULT '{}')`);
+  const schema = readFileSync(new URL('../migrations/0001_miniapp_colors.sql', import.meta.url), 'utf8');
+  db.exec(schema);
   const DB = {prepare(sql) {
     const wrap = values => ({bind:(...args) => wrap(args),first:async () => db.prepare(sql).get(...values) || null,run:async () => ({meta:{changes:Number(db.prepare(sql).run(...values).changes)}})});
     return wrap([]);
@@ -28,5 +30,19 @@ test('colors preserve revisions, validate values and isolate users without any g
     assert.equal((await request({revision:0,document})).status,409);
     assert.equal((await request({revision:1,document:{...document,colors:{a:'bad'}}})).status,400);
     assert.deepEqual((await (await request(undefined,2)).json()).document.colors,{});
+    db.exec(schema);
+    assert.equal((await (await request()).json()).revision, 1);
+    const colors = Object.fromEntries(Array.from({length:600}, (_, i) => [JSON.stringify(['lesson-v2','group', '1', String(i), 'анализ', 'common']), '#abcdef']));
+    const large = await request({ revision: 1, document: { ...document, colors } });
+    assert.equal(large.status, 200);
+    assert.deepEqual((await (await request()).json()).document.colors, colors);
+    // Two devices saving against the same revision cannot overwrite one another.
+    const competing = await Promise.all([
+      request({ revision: 2, document: { ...document, colors: { a: '#111111' } } }),
+      request({ revision: 2, document: { ...document, colors: { b: '#222222' } } }),
+    ]);
+    assert.deepEqual(competing.map(response => response.status).sort(), [200, 409]);
+    const unauthenticated = await app.request('http://localhost/api/colors', {}, {DB, TELEGRAM_BOT_TOKEN:secret});
+    assert.equal(unauthenticated.status, 401);
   } finally { db.close(); }
 });

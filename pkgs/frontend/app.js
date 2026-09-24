@@ -1,17 +1,18 @@
-import { API_ROOT } from './src/api-root.js?v=97';
-import { createLessonColorRow } from "./src/lesson-color-picker.js?v=97";
+import { API_ROOT } from './src/api-root.js?v=98';
+import { createLessonColorRow } from "./src/lesson-color-picker.js?v=105";
 import {
   getStoredValue as safeGetStorage,
   readStoredJson as readJsonStorage,
   removeStoredValue as safeRemoveStorage,
   setStoredValue as safeSetStorage,
   writeStoredJson as writeJsonStorage,
-} from "./src/storage.js?v=97";
-import { initializeTelegramWebApp, triggerTelegramHaptic } from "./src/telegram.js?v=97";
-import { setStaleNotice, showToast } from "./src/feedback.js?v=97";
-import { setupScheduleModes, filterSubgroup, teacherSchedule } from "./src/schedule-modes.js?v=102";
-import { requestJson } from "./src/request.js?v=97";
-import { setupCloudColors } from "./src/cloud-colors.js?v=99";
+} from "./src/storage.js?v=98";
+import { initializeTelegramWebApp, triggerTelegramHaptic } from "./src/telegram.js?v=98";
+import { setStaleNotice, showToast } from "./src/feedback.js?v=98";
+import { setupScheduleModes, filterSubgroup, teacherSchedule } from "./src/schedule-modes.js?v=105";
+import { requestJson } from "./src/request.js?v=98";
+import { setupCloudColors } from "./src/cloud-colors.js?v=104";
+import { subjectTeacherColorKey } from "./src/lesson-color-key.js?v=105";
 
 let scheduleMode = null;
 let teacherRequest = 0;
@@ -63,7 +64,7 @@ const SCHEDULE_ENDPOINT = "/api/schedule";
 const GROUPS_ENDPOINT = "/api/groups";
 const CACHE_SCHEMA_VERSION = 1;
 const INACTIVITY_REFRESH_MS = 15 * 60 * 1000;
-const LESSON_COLORS_STORAGE_KEY = "lessonColors:v1";
+const LESSON_COLORS_STORAGE_KEY = "lessonColors:guest:v2";
 let cloudColors = null;
 const LESSON_COLOR_OPTIONS = [
   { id: "default", label: "Обычный цвет", color: "#0b0b0c" },
@@ -144,8 +145,8 @@ function initApp() {
       apiBase: API_BASE_URL,
       buildLesson: buildClassInfoHTML,
       displayedTime: getDisplayedClassTime,
-      decorateLesson(card, title, scope) {
-        prepareLessonColor(card, title, scope);
+      decorateLesson(card, title, scope, professor) {
+        prepareLessonColor(card, title, scope, professor);
         applyLessonEdge(card);
       },
     },
@@ -216,8 +217,8 @@ function formatBreakDuration(minutes) {
   return `${minutes} мин`;
 }
 
-function lessonColorKey(title, scope) {
-  return `${normalizeLessonTitle(title)}::${scope}`;
+function lessonColorKey(title, scope, professor) {
+  return subjectTeacherColorKey(title, professor);
 }
 
 function getLessonColors() {
@@ -230,29 +231,29 @@ function startCloudColors() {
   if (!cloudColors) cloudColors = setupCloudColors(() => document.querySelectorAll('[data-lesson-color-key]').forEach(applyLessonEdge), showToast);
 }
 
-function getLessonColor(title, scope) {
-  const colors = getLessonColors();
-  return colors[lessonColorKey(title, scope)] ||
-    (scope === "common" ? colors[normalizeLessonTitle(title)] : null) ||
-    null;
+function getLessonColor(title, scope, professor) {
+  return getLessonColors()[lessonColorKey(title, scope, professor)] || null;
 }
 
-function saveLessonColor(title, scope, color) {
-  const key = lessonColorKey(title, scope);
+function saveLessonColor(title, scope, color, professor) {
+  const key = lessonColorKey(title, scope, professor);
   if (!key) return;
-  const colors = getLessonColors();
-  if (color) colors[key] = color;
-  else delete colors[key];
-  if (scope === "common") delete colors[normalizeLessonTitle(title)];
-  writeJsonStorage(LESSON_COLORS_STORAGE_KEY, colors);
-  cloudColors?.edit(key, color || null);
-  if (scope === "common") cloudColors?.edit(normalizeLessonTitle(title), null);
+  startCloudColors();
+  if (cloudColors) cloudColors.edit(key, color || null);
+  else {
+    const colors = getLessonColors();
+    if (color) colors[key] = color;
+    else delete colors[key];
+    writeJsonStorage(LESSON_COLORS_STORAGE_KEY, colors);
+    showToast('Цвет сохранён на устройстве. Для сохранения в аккаунте откройте приложение через Telegram.');
+  }
 }
 
-function prepareLessonColor(card, title, scope) {
+function prepareLessonColor(card, title, scope, professor) {
+  card.dataset.lessonProfessor = professor || "";
   card.dataset.lessonTitle = title || "";
   card.dataset.lessonColorScope = scope;
-  card.dataset.lessonColorKey = lessonColorKey(title, scope);
+  card.dataset.lessonColorKey = lessonColorKey(title, scope, professor);
   card.classList.toggle(
     "is-title-only",
     card.children.length === 1 && card.firstElementChild?.classList.contains("class-detail"),
@@ -263,6 +264,7 @@ function applyLessonEdge(card) {
   const color = getLessonColor(
     card.dataset.lessonTitle,
     card.dataset.lessonColorScope,
+    card.dataset.lessonProfessor,
   );
   card.style.removeProperty("--lesson-edge-color");
   card.classList.toggle("has-lesson-edge", Boolean(color));
@@ -336,10 +338,11 @@ function setupLessonColorPicker() {
       .map((card) => ({
         title: card.dataset.lessonTitle,
         scope: card.dataset.lessonColorScope,
+        professor: card.dataset.lessonProfessor,
       }))
-      .filter(({ title }) => title);
-    lessons.forEach(({ title, scope }) =>
-      picker.appendChild(buildLessonColorRow(title, scope)),
+      .filter(({ title, scope, professor }) => lessonColorKey(title, scope, professor));
+    lessons.forEach(({ title, scope, professor }) =>
+      picker.appendChild(buildLessonColorRow(title, scope, professor)),
     );
     if (!lessons.length) return;
     picker.addEventListener('refresh-colors', () => {
@@ -368,18 +371,19 @@ function setupLessonColorPicker() {
   }).observe(scheduleDays, { childList: true, subtree: true });
 }
 
-function buildLessonColorRow(title, scope) {
+function buildLessonColorRow(title, scope, professor) {
   return createLessonColorRow(title, scope, {
     options: LESSON_COLOR_OPTIONS,
-    getColor: getLessonColor,
+    professorName: professor,
+    getColor: (title, scope) => getLessonColor(title, scope, professor),
     applyColor(title, scope, color) {
-      saveLessonColor(title, scope, color);
-      updateLessonCards(title, scope);
+      saveLessonColor(title, scope, color, professor);
+      updateLessonCards(title, scope, professor);
     },
   });
 }
-function updateLessonCards(title, scope) {
-  const key = lessonColorKey(title, scope);
+function updateLessonCards(title, scope, professor) {
+  const key = lessonColorKey(title, scope, professor);
   document.querySelectorAll(".class-common, .subgroup").forEach((card) => {
     if (card.dataset.lessonColorKey === key) applyLessonEdge(card);
   });
@@ -1291,7 +1295,7 @@ function displaySchedule(scheduleData) {
           const cell = document.createElement('div');
           cell.className = 'subgroup';
           cell.innerHTML = buildClassInfoHTML(entry.lesson, entry.isLecture);
-          prepareLessonColor(cell, entry.lesson.classTitle, entry.label === 'Б' ? 'subgroup-b' : entry.label === 'А' ? 'subgroup-a' : 'common');
+          prepareLessonColor(cell, entry.lesson.classTitle, entry.label === 'Б' ? 'subgroup-b' : entry.label === 'А' ? 'subgroup-a' : 'common', entry.lesson.professorName);
           applyLessonEdge(cell);
           if (entry.label) {
             const marker = document.createElement('span');
@@ -1306,19 +1310,19 @@ function displaySchedule(scheduleData) {
       } else if (cls.isCommon) {
         infoDiv.classList.add("class-common");
         infoDiv.innerHTML = buildClassInfoHTML(cls.subgroupA, cls.isLecture);
-        prepareLessonColor(infoDiv, cls.subgroupA?.classTitle, cls.colorScope || "common");
+        prepareLessonColor(infoDiv, cls.subgroupA?.classTitle, cls.colorScope || "common", cls.subgroupA?.professorName);
         applyLessonEdge(infoDiv);
       } else {
         infoDiv.classList.add("class-split");
         const left = document.createElement("div");
         left.className = "subgroup subgroup-a";
         left.innerHTML = buildClassInfoHTML(cls.subgroupA, cls.isLecture);
-        prepareLessonColor(left, cls.subgroupA?.classTitle, "subgroup-a");
+        prepareLessonColor(left, cls.subgroupA?.classTitle, "subgroup-a", cls.subgroupA?.professorName);
         applyLessonEdge(left);
         const right = document.createElement("div");
         right.className = "subgroup subgroup-b";
         right.innerHTML = buildClassInfoHTML(cls.subgroupB, cls.isLecture);
-        prepareLessonColor(right, cls.subgroupB?.classTitle, "subgroup-b");
+        prepareLessonColor(right, cls.subgroupB?.classTitle, "subgroup-b", cls.subgroupB?.professorName);
         applyLessonEdge(right);
         for (const [cell, label] of [[left, 'А'], [right, 'Б']]) {
           const marker = document.createElement('span');

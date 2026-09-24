@@ -29,7 +29,7 @@ test('colors skip periodic reads in a hidden tab; edits upload and retry backs o
   env.document.hidden = false;
   context.colors.edit('lesson', '#123456');
   [...env.timers.values()].find(timer => timer.ms === 3000).fn(); await tick();
-  assert.equal(calls.length, 3); assert.equal(calls[2].body.document.colors.lesson, '#123456');
+  assert.equal(calls.length, 2); assert.equal(calls[1].body.document.colors.lesson, '#123456');
   fail = true; context.colors.edit('lesson', '#abcdef');
   [...env.timers.values()].find(timer => timer.ms === 3000).fn(); await tick();
   assert.ok([...env.timers.values()].some(timer => timer.ms >= 20000));

@@ -13,11 +13,51 @@
     <meta name="theme-color" content="#0b0b0c" />
     <title>Расписание</title>
 
+    <!-- Runs before styles/module downloads; no API calls or Telegram user data. -->
+    <script id="startup-watchdog">
+      (function () {
+        var state = { startedAt: new Date().toISOString(), stage: 'loading', failures: [] };
+        window.scheduleStartup = state;
+        function resourcePath(value) {
+          try { return new URL(value, location.href).pathname; } catch (_) { return ''; }
+        }
+        function render() {
+          var panel = document.getElementById('startup-error');
+          if (panel) panel.hidden = state.stage !== 'timeout';
+          var details = document.getElementById('startup-diagnostics');
+          if (details) details.textContent = JSON.stringify(state, null, 2);
+        }
+        function record(kind, path) {
+          if (state.stage === 'ready') return;
+          if (state.failures.length < 8) state.failures.push({ kind: kind, path: resourcePath(path) });
+          render();
+        }
+        window.addEventListener('error', function (event) {
+          var target = event.target;
+          if (target && (target.src || target.href)) record('resource', target.src || target.href);
+          else record('script', event.filename || '');
+        }, true);
+        window.addEventListener('unhandledrejection', function () { record('promise', ''); });
+        var timer = setTimeout(function () {
+          state.stage = 'timeout';
+          state.online = navigator.onLine;
+          render();
+          try { window.Telegram.WebApp.ready(); } catch (_) {}
+        }, 15000);
+        window.addEventListener('schedule-ready', function () {
+          clearTimeout(timer);
+          state.stage = 'ready';
+          render();
+        });
+        document.addEventListener('DOMContentLoaded', render);
+      })();
+    </script>
+
     <script>
       // ═══════════════════════════════════════════════════════════════
       // НАСТРОЙКА: ВРЕМЕННОЕ ОТКЛЮЧЕНИЕ КЭША styles.css
       // ═══════════════════════════════════════════════════════════════
-      // По умолчанию false — сайт грузится как обычно, с версией "?v=97"
+      // По умолчанию false — сайт грузится как обычно, с версией "?v=98"
       // из статического тега <link> ниже (обновляете число вручную при
       // каждом деплое, как раньше).
       //
@@ -59,10 +99,10 @@
     <!-- styles.css — статический, render-blocking тег: браузер обязан
          дождаться его загрузки и разбора, прежде чем показать страницу,
          поэтому голый HTML физически не может промелькнуть в обычном
-         режиме (FORCE_DISABLE_CACHE = false). Версия "?v=102" — меняйте
+         режиме (FORCE_DISABLE_CACHE = false). Версия "?v=103" — меняйте
          вручную при каждом деплое, как и раньше. -->
-    <link rel="stylesheet" id="mainStyle" href="/styles.css?v=101" />
-    <link rel="stylesheet" href="/src/comparison.css?v=97" />
+    <link rel="stylesheet" id="mainStyle" href="/styles.css?v=102" />
+    <link rel="stylesheet" href="/src/comparison.css?v=98" />
 
     <!-- ПРЕДЗАГРУЗКА ШРИФТОВ, которые нужны для первого экрана (шапка,
          подписи, кнопка) — чтобы браузер начал их скачивать параллельно
@@ -365,19 +405,8 @@
     <div id="startup-error" role="alert" hidden style="position:fixed;inset:20px 20px auto;z-index:9999;padding:16px;background:#202023;color:#fff;border-radius:16px">
       Не удалось запустить приложение. Проверьте соединение и
       <button type="button" onclick="location.reload()">повторите загрузку</button>.
+      <details style="margin-top:12px"><summary>Данные для диагностики</summary><pre id="startup-diagnostics" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px"></pre></details>
     </div>
-    <script>
-      (function () {
-        var timer = setTimeout(function () {
-          document.getElementById('startup-error').hidden = false;
-          try { window.Telegram.WebApp.ready(); } catch (_) {}
-        }, 15000);
-        window.addEventListener('schedule-ready', function () {
-          clearTimeout(timer);
-          document.getElementById('startup-error').hidden = true;
-        });
-      })();
-    </script>
-    <script type="module" src="/app.js?v=102"></script>
+    <script type="module" src="/app.js?v=105"></script>
   </body>
 </html>

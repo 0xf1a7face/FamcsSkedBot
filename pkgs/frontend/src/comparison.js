@@ -1,6 +1,6 @@
-import { COMPARISON_DAYS, comparisonDay, selectionKey, clockTime } from './comparison-model.js?v=97';
-import { readStoredJson, writeStoredJson } from './storage.js?v=97';
-import { requestJson } from './request.js?v=97';
+import { COMPARISON_DAYS, comparisonDay, selectionKey, clockTime } from './comparison-model.js?v=98';
+import { readStoredJson, writeStoredJson } from './storage.js?v=98';
+import { requestJson } from './request.js?v=98';
 
 async function requestData(url, options = {}) {
   const result = await requestJson(url, options);
@@ -331,7 +331,7 @@ export function setupComparison({ panel, apiBase, buildLesson, decorateLesson, d
             card.className = 'subgroup comparison-lesson';
             card.innerHTML = buildLesson(item.lesson, item.isLecture);
             card.setAttribute('aria-label', `${columns[columnIndex].group} группа, ${clockTime(entry.start)}–${clockTime(entry.end)}`);
-            decorateLesson(card, item.lesson.classTitle, item.scope);
+            decorateLesson(card, item.lesson.classTitle, item.scope, item.lesson.professorName);
             cell.append(card);
           }
           grid.append(cell);

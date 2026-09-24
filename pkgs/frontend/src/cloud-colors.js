@@ -1,4 +1,4 @@
-import { accountHint, accountRequest } from './account-api.js?v=97';
+import { accountHint, accountRequest } from './account-api.js?v=104';
 
 const HEX = /^#[0-9a-f]{6}$/i;
 const LEGACY_COLORS_KEY = 'lessonColors:v1';
@@ -8,7 +8,7 @@ const emptyDocument = () => ({ schemaVersion: 1, savedAt: 0, colors: {}, recentC
 function colorEntries(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   return Object.fromEntries(Object.entries(value)
-    .filter(([key, color]) => key.length <= 250 && !['__proto__', 'constructor', 'prototype'].includes(key) && typeof color === 'string' && HEX.test(color))
+    .filter(([key, color]) => key.length <= 512 && !['__proto__', 'constructor', 'prototype'].includes(key) && typeof color === 'string' && HEX.test(color))
     .map(([key, color]) => [key, color.toLowerCase()]));
 }
 
@@ -40,7 +40,7 @@ function normalizeLocal(saved) {
   let seq = Number.isSafeInteger(source.seq) && source.seq >= 0 ? source.seq : 0;
   if (source.pending && typeof source.pending === 'object' && !Array.isArray(source.pending)) {
     for (const [key, edit] of Object.entries(source.pending)) {
-      if (key.length > 250 || ['__proto__', 'constructor', 'prototype'].includes(key) || !edit || !Number.isSafeInteger(edit.seq) || edit.seq < 0 || (edit.value !== null && (typeof edit.value !== 'string' || !HEX.test(edit.value)))) continue;
+      if (key.length > 512 || ['__proto__', 'constructor', 'prototype'].includes(key) || !edit || !Number.isSafeInteger(edit.seq) || edit.seq < 0 || (edit.value !== null && (typeof edit.value !== 'string' || !HEX.test(edit.value)))) continue;
       pending[key] = { value: typeof edit.value === 'string' ? edit.value.toLowerCase() : null, seq: edit.seq };
       seq = Math.max(seq, edit.seq);
     }
@@ -70,12 +70,12 @@ export function acknowledgeEdits(pending, sent) {
 // the migration complete only after the API confirms the resulting JSON.
 export function stageLegacyColors(local, legacyColors, legacyRecent) {
   for (const [key, value] of Object.entries(colorEntries(legacyColors))) {
-    if (local.pending[key]?.value === value || (!local.pending[key] && local.document.colors[key] === value)) continue;
+    if (Object.hasOwn(local.pending, key) || Object.hasOwn(local.document.colors, key)) continue;
     local.pending[key] = { value, seq: ++local.seq };
   }
   const recent = recentColors(legacyRecent);
   const current = local.recent?.value || local.document.recentColors;
-  if (recent.length && JSON.stringify(recent) !== JSON.stringify(current)) local.recent = { value: recent, seq: ++local.seq };
+  if (!local.recent && !current.length && recent.length) local.recent = { value: recent, seq: ++local.seq };
   return local;
 }
 
@@ -85,84 +85,136 @@ export function buildColorDocument(remote, pending, recent) {
     recentColors: recentColors(recent?.value || remote.recentColors) };
 }
 
-export function setupCloudColors(onChange, onError) {
-  const uid = accountHint();
+export function setupCloudColors(onChange, onError, { request = accountRequest, hint = accountHint } = {}) {
+  const uid = hint();
   if (!uid) return null;
   const key = `colors:account:${uid}`;
   const migrationKey = `colors:legacy-imported:${uid}:v2`;
-  let local = normalizeLocal(readJson(key, null));
+  const ownerKey = 'colors:legacy-owner:v2';
+  const local = normalizeLocal(readJson(key, null));
+  // The compatibility cache has no user identity. Claim it once, never for
+  // each account sharing this browser. New paints no longer write to it.
+  const owner = storageGet(ownerKey);
+  const hasOtherAccount = (() => {
+    try { return Object.keys(localStorage).some(k => k.startsWith('colors:account:') && k !== key); }
+    catch { return true; }
+  })();
+  const mayImport = owner === uid || (!owner && !hasOtherAccount);
+  if (mayImport && !owner) storageSet(ownerKey, uid);
   const legacy = {
-    colors: colorEntries(readJson(LEGACY_COLORS_KEY, {})),
-    recent: recentColors(readJson(LEGACY_RECENT_KEY, [])),
+    colors: mayImport ? colorEntries(readJson(LEGACY_COLORS_KEY, {})) : {},
+    recent: mayImport ? recentColors(readJson(LEGACY_RECENT_KEY, [])) : [],
   };
   let migrationPending = !storageGet(migrationKey) && (Object.keys(legacy.colors).length > 0 || legacy.recent.length > 0);
-  if (migrationPending) stageLegacyColors(local, legacy.colors, legacy.recent);
-  else if (!storageGet(migrationKey)) storageSet(migrationKey, 'empty');
 
   let running = false, timer, disposed = false, reportedError = false, lastRead = 0, failures = 0;
+  // A revision is valid only alongside the document fetched in this session.
+  let revision = null;
+  const active = () => !disposed && hint() === uid;
   const dirty = () => Object.keys(local.pending).length > 0 || Boolean(local.recent);
-  function persist() { try { localStorage.setItem(key, JSON.stringify(local)); } catch { /* server still available */ } }
+  function persist() { storageSet(key, JSON.stringify(local)); }
   function paint() {
-    const colors = mergeColors(local.document.colors, local.pending);
-    try {
-      localStorage.setItem(LEGACY_COLORS_KEY, JSON.stringify(colors));
-      localStorage.setItem(LEGACY_RECENT_KEY, JSON.stringify(local.recent?.value || local.document.recentColors));
-    } catch { /* optional compatibility cache */ }
+    if (!active()) return;
+    storageSet(LEGACY_RECENT_KEY, JSON.stringify(local.recent?.value || local.document.recentColors));
     onChange?.();
   }
-  const queue = (ms = 3000) => { clearTimeout(timer); timer = setTimeout(sync, ms); };
-  async function sync() {
-    if (running || disposed || accountHint() !== uid) return;
+  const queue = (ms = 3000) => {
+    clearTimeout(timer);
+    if (active()) timer = setTimeout(() => void sync(), ms);
+  };
+  async function sync(refresh = false) {
+    if (running || !active()) return;
+    clearTimeout(timer);
     running = true;
     try {
-      // Always read latest before merging edits; timestamps never order writes.
-      const current = await accountRequest('colors');
-      lastRead = Date.now();
-      if (String(current.userId) !== uid) throw new Error('Учётная запись изменилась.');
-      local.document = buildColorDocument(current.document, {}, null);
-      // Re-stage after the GET too: the cached document may have matched the
-      // legacy palette while the actual server document was still empty.
-      if (migrationPending) stageLegacyColors(local, legacy.colors, legacy.recent);
-      paint();
-      if (dirty()) {
-        const sent = JSON.parse(JSON.stringify(local.pending)), recent = local.recent && { ...local.recent };
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (revision === null || (refresh && !dirty())) {
+          const current = await request('colors');
+          if (!active()) return;
+          if (String(current.userId) !== uid) throw new Error('Учётная запись изменилась.');
+          revision = current.revision;
+          lastRead = Date.now();
+          local.document = buildColorDocument(current.document, {}, null);
+          if (migrationPending) stageLegacyColors(local, legacy.colors, legacy.recent);
+          persist(); paint();
+        }
+        if (!dirty()) {
+          if (migrationPending) { storageSet(migrationKey, 'already-current'); migrationPending = false; }
+          break;
+        }
+        const sent = JSON.parse(JSON.stringify(local.pending)), recent = local.recent && JSON.parse(JSON.stringify(local.recent));
         const document = buildColorDocument(local.document, sent, recent);
-        const saved = await accountRequest('colors', { revision: current.revision, document }, 'PUT');
+        let saved;
+        try {
+          saved = await request('colors', { revision, document }, 'PUT', { keepalive: true });
+        } catch (error) {
+          // Rebase only our pending keys on the newer full document.
+          if (error.status !== 409) throw error;
+          revision = null;
+          if (attempt === 2) throw error;
+          continue;
+        }
+        if (!active()) return;
+        if (String(saved.userId) !== uid) throw new Error('Учётная запись изменилась.');
         acknowledgeEdits(local.pending, sent);
         if (recent && local.recent?.seq === recent.seq) local.recent = null;
         local.document = buildColorDocument(saved.document, {}, null);
+        revision = saved.revision;
         if (migrationPending) {
           storageSet(migrationKey, 'uploaded');
           migrationPending = false;
         }
-        paint();
-      } else if (migrationPending) {
-        storageSet(migrationKey, 'already-current');
-        migrationPending = false;
+        persist(); paint();
+        break;
       }
-      persist();
       reportedError = false; failures = 0;
     } catch (error) {
       failures++;
+      // An interrupted PUT may have committed. Fetch before retrying it.
+      revision = null;
       if (error.status !== 409) console.warn('Цвета пока не синхронизированы:', error.message);
       if (dirty() && !reportedError && error.status !== 409) {
         onError?.(`Цвета сохранены на устройстве. Сервер: ${error.message}`);
         reportedError = true;
       }
-    } finally { running = false; if (dirty()) queue(Math.min(300000, 10000 * 2 ** Math.min(failures, 5))); }
+    } finally {
+      if (active()) persist();
+      running = false;
+      if (dirty()) queue(failures ? Math.min(300000, 10000 * 2 ** Math.min(failures, 5)) : 3000);
+    }
   }
-  const refresh = () => { if (!document.hidden && (dirty() || Date.now() - lastRead >= 60000)) void sync(); };
+  const refresh = () => { if (!document.hidden && (dirty() || Date.now() - lastRead >= 60000)) void sync(true); };
+  const flush = () => { if (dirty()) void sync(); };
+  const visibility = () => document.hidden ? flush() : refresh();
+  const recentChanged = event => {
+    if (!active()) return;
+    const value = recentColors(event.detail);
+    if (JSON.stringify(value) === JSON.stringify(local.recent?.value || local.document.recentColors)) return;
+    local.recent = { value, seq: ++local.seq }; persist(); queue();
+  };
   window.addEventListener('focus', refresh);
   window.addEventListener('online', refresh);
-  document.addEventListener('visibilitychange', refresh);
+  window.addEventListener('pagehide', flush);
+  window.addEventListener('lesson-recent-changed', recentChanged);
+  document.addEventListener('visibilitychange', visibility);
   const interval = setInterval(refresh, 600000);
-  window.addEventListener('lesson-recent-changed', event => {
-    local.recent = { value: recentColors(event.detail), seq: ++local.seq }; persist(); queue();
-  });
   persist(); paint(); void sync();
   return {
-    getColors: () => mergeColors(local.document.colors, local.pending),
-    edit(key, value) { local.pending[key] = { value: value?.toLowerCase() || null, seq: ++local.seq }; persist(); queue(); },
-    stop() { disposed = true; clearTimeout(timer); clearInterval(interval); window.removeEventListener('focus', refresh); window.removeEventListener('online', refresh); document.removeEventListener('visibilitychange', refresh); },
+    getColors: () => active() ? mergeColors(local.document.colors, local.pending) : {},
+    edit(key, value) {
+      if (!active() || typeof key !== 'string' || key.length > 512 || ['__proto__', 'constructor', 'prototype'].includes(key)) return;
+      const color = value === null ? null : typeof value === 'string' && HEX.test(value) ? value.toLowerCase() : undefined;
+      if (color === undefined || (mergeColors(local.document.colors, local.pending)[key] || null) === color) return;
+      local.pending[key] = { value: color, seq: ++local.seq }; persist(); paint(); queue();
+    },
+    sync,
+    stop() {
+      disposed = true; clearTimeout(timer); clearInterval(interval);
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('online', refresh);
+      window.removeEventListener('pagehide', flush);
+      window.removeEventListener('lesson-recent-changed', recentChanged);
+      document.removeEventListener('visibilitychange', visibility);
+    },
   };
 }

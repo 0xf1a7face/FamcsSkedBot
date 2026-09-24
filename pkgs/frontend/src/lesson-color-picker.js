@@ -1,4 +1,4 @@
-import { readStoredJson, writeStoredJson } from './storage.js?v=97';
+import { readStoredJson, writeStoredJson } from './storage.js?v=98';
 
 const RECENT_KEY = 'lessonRecentColors:v1';
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -25,12 +25,12 @@ function hexToHsv(hex) {
   return [h * 60, max ? d / max : 0, max];
 }
 
-export function createLessonColorRow(title, scope, { options, getColor, applyColor }) {
+export function createLessonColorRow(title, scope, { options, getColor, applyColor, professorName }) {
   const row = document.createElement('div');
   row.className = 'lesson-color-row';
   const heading = document.createElement('div');
   heading.className = 'lesson-color-title';
-  heading.textContent = title + (scope === 'subgroup-a' ? ' · подгруппа А' : scope === 'subgroup-b' ? ' · подгруппа Б' : '');
+  heading.textContent = title + (professorName ? ` · ${professorName}` : '') + (scope === 'subgroup-a' ? ' · подгруппа А' : scope === 'subgroup-b' ? ' · подгруппа Б' : '');
   const choices = document.createElement('div');
   choices.className = 'lesson-color-choices';
   row.append(heading, choices);
@@ -43,6 +43,7 @@ export function createLessonColorRow(title, scope, { options, getColor, applyCol
     selected = color;
     applyColor(title, scope, color);
     renderChoices();
+    refresh();
   };
   const remember = color => {
     // All shade adjustments in one opening replace the same recent-color slot.
@@ -70,6 +71,7 @@ export function createLessonColorRow(title, scope, { options, getColor, applyCol
     }
   });
   function renderChoices() {
+    selected = getColor(title, scope);
     const recent = recentColors(readStoredJson(RECENT_KEY), options);
     plus.classList.toggle('is-selected', Boolean(selected) &&
       ![...options.map(option => option.color.toLowerCase()), ...recent].includes(selected.toLowerCase()));

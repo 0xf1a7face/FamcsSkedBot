@@ -1,6 +1,6 @@
 # Правила переадресации для Cloudflare Pages
 # Документация: https://developers.cloudflare.com/pages/platform/redirects/
 
-# Редирект index.html для всех несуществующих маршрутов
-# Это важно для SPA приложений
-/* /index.html 200
+# Приложение открывается по / и не использует клиентские URL-маршруты.
+# Отсутствующие ресурсы должны возвращать 404, а не HTML с кодом 200.
+# 404.html также отключает автоматический SPA fallback Cloudflare Pages.

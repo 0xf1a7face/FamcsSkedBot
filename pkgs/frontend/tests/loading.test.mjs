@@ -6,12 +6,37 @@ import { requestJson } from '../src/request.js';
 import { teacherSchedule } from '../src/schedule-modes.js';
 import { initializeTelegramWebApp } from '../src/telegram.js';
 import { API_ROOT } from '../src/api-root.js';
+import { subjectTeacherColorKey } from '../src/lesson-color-key.js';
 
 const deferred = () => {
   let resolve, reject;
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
   return { promise, resolve, reject };
 };
+
+test('same subject and professor share notes across groups, subgroups and teacher mode', () => {
+  const a = app();
+  a.run(`
+    const colorStore = {};
+    cloudColors = { getColors: () => colorStore, edit(key, value) { colorStore[key] = value; } };
+    const card = { dataset: {}, children: [], classList: { toggle() {} },
+      style: { removeProperty(key) { delete this[key]; }, setProperty(key, value) { this[key] = value; } } };
+    prepareLessonColor(card, 'Анализ', 'subgroup-a', 'Иванов И.И.');
+    saveLessonColor('Анализ', 'subgroup-a', '#abcdef', card.dataset.lessonProfessor);
+    appState.currentGroup = '3'; appState.displayedGroup = '3';
+    prepareLessonColor(card, 'Анализ', 'common', 'И. И. Иванов');
+    applyLessonEdge(card);
+  `);
+  assert.equal(a.run('card.style["--lesson-edge-color"]'), '#abcdef');
+  a.run("scheduleMode = 'teacher'; selectedTeacher = 'Иванов'; prepareLessonColor(card, 'Анализ', 'subgroup-b', 'Иванов'); applyLessonEdge(card)");
+  assert.equal(a.run('card.style["--lesson-edge-color"]'), '#abcdef');
+  a.run("prepareLessonColor(card, 'Анализ', 'common', 'Петров'); applyLessonEdge(card)");
+  assert.equal(a.run('card.style["--lesson-edge-color"]'), undefined);
+  a.run("saveLessonColor('Анализ', 'common', '#112233', 'Петров')");
+  assert.equal(a.run("getLessonColor('Анализ', 'common', 'Петров')"), '#112233');
+  assert.equal(a.run("getLessonColor('Анализ', 'common', 'Иванов')"), '#abcdef');
+  assert.equal(a.run("getLessonColor('Алгебра', 'common', 'Иванов')"), null);
+});
 
 function app() {
   const requests = [], rendered = [], loading = [], errors = [];
@@ -25,7 +50,7 @@ function app() {
     return elements.get(id);
   };
   const context = vm.createContext({
-    console, URL, Event, API_ROOT, requestAnimationFrame() {},
+    console, URL, Event, API_ROOT, subjectTeacherColorKey, requestAnimationFrame() {},
     window: { addEventListener() {} },
     document: { readyState: 'loading', addEventListener() {}, getElementById: element, createElement: () => ({}) },
     requestJson(url, options) { const pending = deferred(); requests.push({ url: String(url), options, ...pending }); return pending.promise; },
