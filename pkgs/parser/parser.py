@@ -137,13 +137,23 @@ def get_merged_range_for_cell(ws: Worksheet, row: int, col: int):
     return None
 
 
+def cell_to_str(cell: openpyxl.cell.cell.Cell) -> Any:
+    # cell.value: [str, float, int, datetime.datetime]
+    # Docs: https://openpyxl.readthedocs.io/en/stable/api/openpyxl.cell.cell.html#openpyxl.cell.cell.Cell.value
+    if cell.value is None:
+        return None
+    if type(cell.value) in [float, int]:
+        return str(int(cell.value))
+    return str(cell.value)
+
+
 def get_cell_value(ws: Worksheet, row: int, col: int) -> Any:
     cell = ws.cell(row=row, column=col)
     if cell.value is not None:
-        return cell.value
+        return cell_to_str(cell)
     merged = get_merged_range_for_cell(ws, row, col)
     if merged:
-        return ws.cell(row=merged.min_row, column=merged.min_col).value
+        return cell_to_str(ws.cell(row=merged.min_row, column=merged.min_col))
     return None
 
 
